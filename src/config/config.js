@@ -10,3 +10,6 @@ const _config = {
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
     AWS_REGION: process.env.AWS_REGION
 }
+
+
+export default Object.freeze(_config)
