@@ -1,16 +1,15 @@
-import { config as dotenvConfig } from "dotenv"
+import { config as dotenvConfig } from "dotenv";
 
-dotenvConfig()
-
+dotenvConfig();
 
 const _config = {
-    PORT: process.env.PORT,
-    MONGO_URL: process.env.MONGO_URL,
-    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
-    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
-    AWS_REGION: process.env.AWS_REGION,
-    JWT_SECRET: process.env.JWT_SECRET
-}
+  PORT: process.env.PORT,
+  MONGO_URL: process.env.MONGO_URL,
+  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+  AWS_REGION: process.env.AWS_REGION,
+  RABBITMQ_URI: process.env.RABBITMQ_URI,
+  JWT_SECRET: process.env.JWT_SECRET,
+};
 
-
-export default Object.freeze(_config)
+export default Object.freeze(_config);
