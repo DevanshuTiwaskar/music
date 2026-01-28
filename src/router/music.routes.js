@@ -7,6 +7,19 @@ import * as musicController from "../controller/musicController.js";
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+
+/* ======================
+   HEALTH CHECK (NEW)
+====================== */
+router.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    service: "music",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+
 // 🎵 Upload new music (Artist Only - CORRECT)
 router.post(
   "/create",
