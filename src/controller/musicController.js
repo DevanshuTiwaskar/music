@@ -1,25 +1,42 @@
 import musicModel from "../models/music.model.js";
 import playlistModel from "../models/playlist.model.js";
 import { uploadFile, getSignedUrlForAccess } from "../services/storage.service.js";
+import { publishEvent } from "../broker/rabbit.js";
 
 
+// =====================================================
 // ✅ Create Music
+// =====================================================
 export async function createMusic(req, res) {
   try {
-    const musicFile = req.files["music"][0];
-    const coverImageFile = req.files["coverImage"][0];
+    if (!req.files?.music || !req.files?.coverImage) {
+      return res
+        .status(400)
+        .json({ message: "Music file and cover image are required" });
+    }
 
-    const music = await uploadFile(musicFile);
-    const coverImage = await uploadFile(coverImageFile);
+    const musicFile = req.files.music[0];
+    const coverImageFile = req.files.coverImage[0];
+
+    const musicUrl = await uploadFile(musicFile);
+    const coverImageUrl = await uploadFile(coverImageFile);
 
     const musicDoc = await musicModel.create({
       title: req.body.title,
-      artist: req.user.fullName.firstName + " " + req.user.fullName.lastName,
+      artist:
+        req.user.fullName.firstName + " " + req.user.fullName.lastName,
       artistId: req.user.id,
-      musicUrl: music,
-      coverImageUrl: coverImage,
+      musicUrl,
+      coverImageUrl,
       genre: req.body.genre || "Unknown",
       duration: req.body.duration || 0,
+    });
+
+    // 🔥 Publish event to RabbitMQ
+    publishEvent("music.song_uploaded", {
+      musicId: musicDoc._id.toString(),
+      title: musicDoc.title,
+      artist: musicDoc.artist,
     });
 
     res.status(201).json({
@@ -39,25 +56,36 @@ export async function createMusic(req, res) {
 }
 
 
+// =====================================================
 // ✅ Get Music (All or by Artist)
+// =====================================================
 export async function getMusic(req, res) {
   try {
-    const filter = req.query.artistId ? { artistId: req.query.artistId } : {};
-    const musics = await musicModel.find(filter).sort({ createdAt: -1 });
+    const filter = req.query.artistId
+      ? { artistId: req.query.artistId }
+      : {};
+
+    const musics = await musicModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
 
     const signedMusics = await Promise.all(
       musics.map(async (music) => ({
         id: music._id,
         title: music.title,
         artist: music.artist,
-        musicUrl: await getSignedUrlForAccess(music.musicUrl),
-        coverImageUrl: await getSignedUrlForAccess(music.coverImageUrl),
         genre: music.genre,
         createdAt: music.createdAt,
+        musicUrl: await getSignedUrlForAccess(music.musicUrl),
+        coverImageUrl: await getSignedUrlForAccess(music.coverImageUrl),
       }))
     );
 
-    res.status(200).json({ message: "Music fetched successfully", musics: signedMusics });
+    res.status(200).json({
+      message: "Music fetched successfully",
+      musics: signedMusics,
+    });
   } catch (err) {
     console.error("Error fetching music:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
@@ -65,10 +93,25 @@ export async function getMusic(req, res) {
 }
 
 
+// =====================================================
 // ✅ Create Playlist
+// =====================================================
 export async function createPlaylist(req, res) {
   try {
-    const { name, description, songs } = req.body; // songs = array of song IDs
+    const { name, description, songs } = req.body;
+
+    if (!songs || songs.length === 0) {
+      return res.status(400).json({ message: "Songs are required" });
+    }
+
+    // Validate songs exist
+    const existingSongs = await musicModel.find({
+      _id: { $in: songs },
+    });
+
+    if (existingSongs.length !== songs.length) {
+      return res.status(400).json({ message: "Some songs not found" });
+    }
 
     const playlist = await playlistModel.create({
       name,
@@ -77,13 +120,15 @@ export async function createPlaylist(req, res) {
       songs,
     });
 
-    // Add playlistId to each song
     await musicModel.updateMany(
       { _id: { $in: songs } },
       { $addToSet: { playlistIds: playlist._id } }
     );
 
-    res.status(201).json({ message: "Playlist created successfully", playlist });
+    res.status(201).json({
+      message: "Playlist created successfully",
+      playlist,
+    });
   } catch (err) {
     console.error("Error creating playlist:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
@@ -91,35 +136,37 @@ export async function createPlaylist(req, res) {
 }
 
 
-
+// =====================================================
 // ✅ Get Playlists (All or By ID)
+// =====================================================
 export async function getPlaylists(req, res) {
   try {
     const { playlistId } = req.query;
 
-    // If playlistId provided → return single playlist
     let playlists;
+
     if (playlistId) {
       playlists = await playlistModel
         .findById(playlistId)
         .populate("songs")
-        .populate("createdBy", "fullName email");
+        .populate("createdBy", "fullName email")
+        .lean();
     } else {
-      // Otherwise return all playlists
       playlists = await playlistModel
         .find()
         .populate("songs")
-        .populate("createdBy", "fullName email");
+        .populate("createdBy", "fullName email")
+        .lean();
     }
 
     if (!playlists) {
       return res.status(404).json({ message: "Playlist not found" });
     }
 
-    // Ensure playlists is always an array (for consistent response)
-    const playlistArray = Array.isArray(playlists) ? playlists : [playlists];
+    const playlistArray = Array.isArray(playlists)
+      ? playlists
+      : [playlists];
 
-    // Convert songs to include signed URLs
     const signedPlaylists = await Promise.all(
       playlistArray.map(async (playlist) => {
         const signedSongs = await Promise.all(
@@ -128,9 +175,9 @@ export async function getPlaylists(req, res) {
             title: song.title,
             artist: song.artist,
             genre: song.genre,
+            createdAt: song.createdAt,
             musicUrl: await getSignedUrlForAccess(song.musicUrl),
             coverImageUrl: await getSignedUrlForAccess(song.coverImageUrl),
-            createdAt: song.createdAt,
           }))
         );
 

@@ -1,21 +1,24 @@
-// MusicSubscriber.js
-import { subscribrQueue } from "./rabbit.js";
+import { consumeEvents } from "./rabbit.js";
 import { createUserLibrary } from "../services/musicLibraryService.js";
 
-export default () => {
-  // Listen to new user registration event
-  subscribrQueue("AUTHENTICATION_NOTIFICATION_USER.REGISTERED", async (message) => {
-    console.log("🎧 New user registered:", message);
+export default function startMusicSubscriber() {
 
-    // Create an empty music library for the new user
-    await createUserLibrary(message.userId, message.username);
+  consumeEvents("music.queue", async (data, routingKey) => {
 
-    console.log(`Music library created for user: ${message.username}`);
+    // ✅ When user registers → create library
+    if (routingKey === "user.registered") {
+      console.log("🎧 New user registered:", data);
+
+      await createUserLibrary(data.userId, data.username);
+
+      console.log(`✅ Library created for ${data.username}`);
+    }
+
+    // ✅ When song uploaded (future use)
+    if (routingKey === "music.song_uploaded") {
+      console.log("🎵 Song uploaded event:", data);
+    }
+
   });
 
-  // (Optional) You can listen for other events like “SONG.UPLOADED”
-  subscribrQueue("MUSIC_SERVICE_SONG.UPLOADED", async (message) => {
-    console.log("🎵 New song uploaded:", message);
-    // handle metadata, indexing, or notify other services if needed
-  });
-};
+}
